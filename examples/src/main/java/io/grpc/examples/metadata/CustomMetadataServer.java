@@ -14,8 +14,9 @@
  * limitations under the License.
  */
 
-package io.grpc.examples.header;
+package io.grpc.examples.metadata;
 
+import io.grpc.Context;
 import io.grpc.Server;
 import io.grpc.ServerBuilder;
 import io.grpc.ServerInterceptors;
@@ -27,19 +28,22 @@ import java.io.IOException;
 import java.util.logging.Logger;
 
 /**
- * A simple server that like {@link io.grpc.examples.helloworld.HelloWorldServer}.
- * You can get and response any header in {@link io.grpc.examples.header.HeaderServerInterceptor}.
+ * A simple server that receives and sends metadata through interceptors.
  */
-public class CustomHeaderServer {
-  private static final Logger logger = Logger.getLogger(CustomHeaderServer.class.getName());
+public class CustomMetadataServer {
+  private static final Logger logger = Logger.getLogger(CustomMetadataServer.class.getName());
 
   /* The port on which the server should run */
   private static final int PORT = 50051;
   private Server server;
 
   private void start() throws IOException {
+    MetadataServerInterceptor interceptor = new MetadataServerInterceptor();
+    interceptor.outgoingHeader.set("Server->Client header value");
+    interceptor.outgoingTrailer.set("Server->Client trailer value");
     server = ServerBuilder.forPort(PORT)
-        .addService(ServerInterceptors.intercept(new GreeterImpl(), new HeaderServerInterceptor()))
+        .addService(
+            ServerInterceptors.intercept(new GreeterImpl(), interceptor))
         .build()
         .start();
     logger.info("Server started, listening on " + PORT);
@@ -48,7 +52,7 @@ public class CustomHeaderServer {
       public void run() {
         // Use stderr here since the logger may have been reset by its JVM shutdown hook.
         System.err.println("*** shutting down gRPC server since JVM is shutting down");
-        CustomHeaderServer.this.stop();
+        CustomMetadataServer.this.stop();
         System.err.println("*** server shut down");
       }
     });
@@ -73,7 +77,7 @@ public class CustomHeaderServer {
    * Main launches the server from the command line.
    */
   public static void main(String[] args) throws IOException, InterruptedException {
-    final CustomHeaderServer server = new CustomHeaderServer();
+    final CustomMetadataServer server = new CustomMetadataServer();
     server.start();
     server.blockUntilShutdown();
   }
@@ -82,6 +86,10 @@ public class CustomHeaderServer {
 
     @Override
     public void sayHello(HelloRequest req, StreamObserver<HelloReply> responseObserver) {
+      // The Context was attached by the interceptor
+      logger.info(
+          "Context converted from header received from client: "
+          + MetadataServerInterceptor.CLIENT_HEADER_CTX_KEY.get());
       HelloReply reply = HelloReply.newBuilder().setMessage("Hello " + req.getName()).build();
       responseObserver.onNext(reply);
       responseObserver.onCompleted();

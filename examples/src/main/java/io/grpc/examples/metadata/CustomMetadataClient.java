@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package io.grpc.examples.header;
+package io.grpc.examples.metadata;
 
 import io.grpc.Channel;
 import io.grpc.ClientInterceptor;
@@ -31,22 +31,22 @@ import java.util.logging.Logger;
 
 /**
  * A simple client that like {@link io.grpc.examples.helloworld.HelloWorldClient}.
- * This client can help you create custom headers.
+ * This client shows how to use interceptors to modify and/or access headers and trailing metadata.
  */
-public class CustomHeaderClient {
-  private static final Logger logger = Logger.getLogger(CustomHeaderClient.class.getName());
+public class CustomMetadataClient {
+  private static final Logger logger = Logger.getLogger(CustomMetadataClient.class.getName());
 
   private final ManagedChannel originChannel;
   private final GreeterGrpc.GreeterBlockingStub blockingStub;
+  private final MetadataClientInterceptor interceptor = new MetadataClientInterceptor();
 
   /**
    * A custom client.
    */
-  private CustomHeaderClient(String host, int port) {
+  private CustomMetadataClient(String host, int port) {
     originChannel = ManagedChannelBuilder.forAddress(host, port)
         .usePlaintext()
         .build();
-    ClientInterceptor interceptor = new HeaderClientInterceptor();
     Channel channel = ClientInterceptors.intercept(originChannel, interceptor);
     blockingStub = GreeterGrpc.newBlockingStub(channel);
   }
@@ -59,6 +59,7 @@ public class CustomHeaderClient {
    * A simple client method that like {@link io.grpc.examples.helloworld.HelloWorldClient}.
    */
   private void greet(String name) {
+    interceptor.outgoingHeader.set("Value of client->server header");
     logger.info("Will try to greet " + name + " ...");
     HelloRequest request = HelloRequest.newBuilder().setName(name).build();
     HelloReply response;
@@ -69,13 +70,15 @@ public class CustomHeaderClient {
       return;
     }
     logger.info("Greeting: " + response.getMessage());
+    logger.info("header received from server: " + interceptor.receivedHeaders);
+    logger.info("trailer reeived from server: " + interceptor.receivedTrailers);
   }
 
   /**
    * Main start the client from the command line.
    */
   public static void main(String[] args) throws Exception {
-    CustomHeaderClient client = new CustomHeaderClient("localhost", 50051);
+    CustomMetadataClient client = new CustomMetadataClient("localhost", 50051);
     try {
       /* Access a service running on the local machine on port 50051 */
       String user = "world";

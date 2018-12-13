@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package io.grpc.examples.header;
+package io.grpc.examples.metadata;
 
 import com.google.common.annotations.VisibleForTesting;
 import io.grpc.CallOptions;
@@ -25,18 +25,26 @@ import io.grpc.ForwardingClientCall.SimpleForwardingClientCall;
 import io.grpc.ForwardingClientCallListener.SimpleForwardingClientCallListener;
 import io.grpc.Metadata;
 import io.grpc.MethodDescriptor;
+import io.grpc.Status;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Logger;
 
 /**
- * A interceptor to handle client header.
+ * A client-side interceptor that sends custom headers and receives custom headers and trailing
+ * metadata.
  */
-public class HeaderClientInterceptor implements ClientInterceptor {
+public class MetadataClientInterceptor implements ClientInterceptor {
 
-  private static final Logger logger = Logger.getLogger(HeaderClientInterceptor.class.getName());
+  private static final Logger logger = Logger.getLogger(MetadataClientInterceptor.class.getName());
 
-  @VisibleForTesting
   static final Metadata.Key<String> CUSTOM_HEADER_KEY =
       Metadata.Key.of("custom_client_header_key", Metadata.ASCII_STRING_MARSHALLER);
+
+  final AtomicReference<String> outgoingHeader = new AtomicReference<>();
+  final BlockingQueue<String> receivedHeaders = new LinkedBlockingQueue<>();
+  final BlockingQueue<String> receivedTrailers = new LinkedBlockingQueue<>();
 
   @Override
   public <ReqT, RespT> ClientCall<ReqT, RespT> interceptCall(MethodDescriptor<ReqT, RespT> method,
@@ -46,7 +54,10 @@ public class HeaderClientInterceptor implements ClientInterceptor {
       @Override
       public void start(Listener<RespT> responseListener, Metadata headers) {
         /* put custom header */
-        headers.put(CUSTOM_HEADER_KEY, "customRequestValue");
+        String outboundHeader = outgoingHeader.get();
+        if (outboundHeader != null) {
+          headers.put(CUSTOM_HEADER_KEY, outboundHeader);
+        }
         super.start(new SimpleForwardingClientCallListener<RespT>(responseListener) {
           @Override
           public void onHeaders(Metadata headers) {
@@ -55,8 +66,20 @@ public class HeaderClientInterceptor implements ClientInterceptor {
              * you can use {@link io.grpc.stub.MetadataUtils#attachHeaders}
              * directly to send header
              */
-            logger.info("header received from server:" + headers);
+            String inboundHeader = headers.get(MetadataServerInterceptor.CUSTOM_HEADER_KEY);
+            if (inboundHeader != null) {
+              receivedHeaders.add(inboundHeader);
+            }
             super.onHeaders(headers);
+          }
+
+          @Override
+          public void onClose(Status status, Metadata trailers) {
+            String inboundTrailer = trailers.get(MetadataServerInterceptor.CUSTOM_TRAILER_KEY);
+            if (inboundTrailer != null) {
+              receivedTrailers.add(inboundTrailer);
+            }
+            super.onClose(status, trailers);
           }
         }, headers);
       }
