@@ -16,6 +16,9 @@
 
 package io.grpc;
 
+import java.util.Collections;
+import java.util.List;
+
 /**
  * Definition of a method exposed by a {@link Server}.
  *
@@ -24,11 +27,15 @@ package io.grpc;
 public final class ServerMethodDefinition<ReqT, RespT> {
   private final MethodDescriptor<ReqT, RespT> method;
   private final ServerCallHandler<ReqT, RespT> handler;
+  private final List<ServerStreamTracer.Factory> tracerFactories;
 
-  private ServerMethodDefinition(MethodDescriptor<ReqT, RespT> method,
-      ServerCallHandler<ReqT, RespT> handler) {
+  private ServerMethodDefinition(
+      MethodDescriptor<ReqT, RespT> method,
+      ServerCallHandler<ReqT, RespT> handler,
+      List<ServerStreamTracer.Factory> tracerFactories) {
     this.method = method;
     this.handler = handler;
+    this.tracerFactories = Collections.unmodifiableList(tracerFactories);
   }
 
   /**
@@ -39,9 +46,9 @@ public final class ServerMethodDefinition<ReqT, RespT> {
    * @return a new instance.
    */
   public static <ReqT, RespT> ServerMethodDefinition<ReqT, RespT> create(
-      MethodDescriptor<ReqT, RespT> method,
-      ServerCallHandler<ReqT, RespT> handler) {
-    return new ServerMethodDefinition<>(method, handler);
+      MethodDescriptor<ReqT, RespT> method, ServerCallHandler<ReqT, RespT> handler) {
+    return new ServerMethodDefinition<>(
+        method, handler, Collections.<ServerStreamTracer.Factory>emptyList());
   }
 
   /** The {@code MethodDescriptor} for this method. */
@@ -62,6 +69,29 @@ public final class ServerMethodDefinition<ReqT, RespT> {
    */
   public ServerMethodDefinition<ReqT, RespT> withServerCallHandler(
       ServerCallHandler<ReqT, RespT> handler) {
-    return new ServerMethodDefinition<>(method, handler);
+    return new ServerMethodDefinition<>(method, handler, tracerFactories);
+  }
+
+  /**
+   * Create a new method definition with a different list of tracer factories.
+   *
+   * @param tracerFactories to bind to a cloned instance of this
+   * @return a cloned instance of this with an unmodifiable view of the new tracer factories
+   * @since 1.36.0
+   */
+  @ExperimentalApi("https://github.com/grpc/grpc-java/issues/????")
+  public ServerMethodDefinition<ReqT, RespT> withStreamTracerFactories(
+      List<ServerStreamTracer.Factory> tracerFactories) {
+    return new ServerMethodDefinition<>(method, handler, tracerFactories);
+  }
+
+  /**
+   * Returns the stream tracer factories bound to this definition.
+   *
+   * @since 1.36.0
+   */
+  @ExperimentalApi("https://github.com/grpc/grpc-java/issues/????")
+  public List<ServerStreamTracer.Factory> getStreamTracerFactories() {
+    return tracerFactories;
   }
 }
