@@ -10,7 +10,7 @@ class InternalStatusRuntimeException extends StatusRuntimeException {
   }
 
   @Override
-  public Throwable fillInStackTrace() {
+  public synchronized Throwable fillInStackTrace() {
     return this;
   }
 }
