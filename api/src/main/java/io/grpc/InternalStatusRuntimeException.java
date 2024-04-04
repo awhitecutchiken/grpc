@@ -20,8 +20,8 @@ import javax.annotation.Nullable;
 
 /**
  * StatusRuntimeException without stack trace, implemented as a subclass, as the
- * {@code String, Throwable, boolean, boolean} constructor is not available in supported version
- * of Android.
+ * {@code String, Throwable, boolean, boolean} constructor is not available in the supported
+ * version of Android.
  *
  * @see StatusRuntimeException
  */
