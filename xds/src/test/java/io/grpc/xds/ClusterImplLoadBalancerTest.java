@@ -280,7 +280,7 @@ public class ClusterImplLoadBalancerTest {
     FakeLoadBalancer leafBalancer = Iterables.getOnlyElement(downstreamBalancers);
     leafBalancer.createSubChannel();
     FakeSubchannel fakeSubchannel = helper.subchannels.poll();
-    fakeSubchannel.setConnectedEagIndex(0);
+    fakeSubchannel.setConnectedEagIndex(endpoint);
     fakeSubchannel.updateState(ConnectivityStateInfo.forNonError(ConnectivityState.READY));
     assertThat(currentState).isEqualTo(ConnectivityState.READY);
 
@@ -309,7 +309,7 @@ public class ClusterImplLoadBalancerTest {
     FakeLoadBalancer leafBalancer = Iterables.getOnlyElement(downstreamBalancers);
     Subchannel subchannel = leafBalancer.createSubChannel();
     FakeSubchannel fakeSubchannel = helper.subchannels.poll();
-    fakeSubchannel.setConnectedEagIndex(0);
+    fakeSubchannel.setConnectedEagIndex(endpoint);
     fakeSubchannel.updateState(ConnectivityStateInfo.forNonError(ConnectivityState.READY));
     assertThat(currentState).isEqualTo(ConnectivityState.READY);
     PickResult result = currentPicker.pickSubchannel(pickSubchannelArgs);
@@ -407,7 +407,7 @@ public class ClusterImplLoadBalancerTest {
     // Leaf balancer is created by Pick First. Get FakeSubchannel created to update attributes
     // A real subchannel would get these attributes from the connected address's EAG locality.
     FakeSubchannel fakeSubchannel = helper.subchannels.poll();
-    fakeSubchannel.setConnectedEagIndex(0);
+    fakeSubchannel.setConnectedEagIndex(endpoint1);
     fakeSubchannel.updateState(ConnectivityStateInfo.forNonError(ConnectivityState.READY));
     assertThat(currentState).isEqualTo(ConnectivityState.READY);
     PickResult result = currentPicker.pickSubchannel(pickSubchannelArgs);
@@ -431,7 +431,7 @@ public class ClusterImplLoadBalancerTest {
     fakeSubchannel.updateState(ConnectivityStateInfo.forNonError(ConnectivityState.CONNECTING));
 
     // Faksubchannel mimics update address and returns different locality
-    fakeSubchannel.setConnectedEagIndex(1);
+    fakeSubchannel.setConnectedEagIndex(endpoint2);
     fakeSubchannel.updateState(ConnectivityStateInfo.forNonError(ConnectivityState.READY));
     result = currentPicker.pickSubchannel(pickSubchannelArgs);
     assertThat(result.getStatus().isOk()).isTrue();
@@ -490,7 +490,7 @@ public class ClusterImplLoadBalancerTest {
         .isEqualTo(endpoint.getAddresses());
     leafBalancer.createSubChannel();
     FakeSubchannel fakeSubchannel = helper.subchannels.poll();
-    fakeSubchannel.setConnectedEagIndex(0);
+    fakeSubchannel.setConnectedEagIndex(endpoint);
     fakeSubchannel.updateState(ConnectivityStateInfo.forNonError(ConnectivityState.READY));
 
     assertThat(currentState).isEqualTo(ConnectivityState.READY);
@@ -571,7 +571,7 @@ public class ClusterImplLoadBalancerTest {
         .isEqualTo(endpoint.getAddresses());
     leafBalancer.createSubChannel();
     FakeSubchannel fakeSubchannel = helper.subchannels.poll();
-    fakeSubchannel.setConnectedEagIndex(0);
+    fakeSubchannel.setConnectedEagIndex(endpoint);
     fakeSubchannel.updateState(ConnectivityStateInfo.forNonError(ConnectivityState.READY));
     assertThat(currentState).isEqualTo(ConnectivityState.READY);
     assertThat(currentState).isEqualTo(ConnectivityState.READY);
@@ -665,7 +665,7 @@ public class ClusterImplLoadBalancerTest {
         .isEqualTo(endpoint.getAddresses());
     leafBalancer.createSubChannel();
     FakeSubchannel fakeSubchannel = helper.subchannels.poll();
-    fakeSubchannel.setConnectedEagIndex(0);
+    fakeSubchannel.setConnectedEagIndex(endpoint);
     fakeSubchannel.updateState(ConnectivityStateInfo.forNonError(ConnectivityState.READY));
     assertThat(currentState).isEqualTo(ConnectivityState.READY);
     assertThat(currentState).isEqualTo(ConnectivityState.READY);
@@ -1031,8 +1031,8 @@ public class ClusterImplLoadBalancerTest {
       listener.onSubchannelState(newState);
     }
 
-    public void setConnectedEagIndex(int eagIndex) {
-      this.connectedAttributes = eags.get(eagIndex).getAttributes();
+    public void setConnectedEagIndex(EquivalentAddressGroup eag) {
+      this.connectedAttributes = eag.getAttributes();
     }
   }
 
