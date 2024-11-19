@@ -23,6 +23,7 @@ import com.google.common.base.MoreObjects;
 import com.google.common.base.MoreObjects.ToStringHelper;
 import com.google.common.base.Objects;
 import com.google.errorprone.annotations.InlineMe;
+import io.grpc.Grpc.ChannelAttr;
 import java.lang.annotation.Documented;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -286,6 +287,7 @@ public abstract class NameResolver {
     private final ProxyDetector proxyDetector;
     private final SynchronizationContext syncContext;
     private final ServiceConfigParser serviceConfigParser;
+    @ChannelAttr @Nullable private final Attributes channelAttributes;
     @Nullable private final ScheduledExecutorService scheduledExecutorService;
     @Nullable private final ChannelLogger channelLogger;
     @Nullable private final Executor executor;
@@ -296,6 +298,7 @@ public abstract class NameResolver {
         ProxyDetector proxyDetector,
         SynchronizationContext syncContext,
         ServiceConfigParser serviceConfigParser,
+        @ChannelAttr Attributes channelAttributes,
         @Nullable ScheduledExecutorService scheduledExecutorService,
         @Nullable ChannelLogger channelLogger,
         @Nullable Executor executor,
@@ -304,6 +307,7 @@ public abstract class NameResolver {
       this.proxyDetector = checkNotNull(proxyDetector, "proxyDetector not set");
       this.syncContext = checkNotNull(syncContext, "syncContext not set");
       this.serviceConfigParser = checkNotNull(serviceConfigParser, "serviceConfigParser not set");
+      this.channelAttributes = checkNotNull(channelAttributes, "channelAttributes not set");
       this.scheduledExecutorService = scheduledExecutorService;
       this.channelLogger = channelLogger;
       this.executor = executor;
@@ -366,6 +370,12 @@ public abstract class NameResolver {
      */
     public ServiceConfigParser getServiceConfigParser() {
       return serviceConfigParser;
+    }
+
+    /** Returns {@link Attributes} of the associated Channel. */
+    @ChannelAttr
+    public Attributes getChannelAttributes() {
+      return channelAttributes;
     }
 
     /**
@@ -457,6 +467,7 @@ public abstract class NameResolver {
       private ProxyDetector proxyDetector;
       private SynchronizationContext syncContext;
       private ServiceConfigParser serviceConfigParser;
+      private Attributes channelAttributes = Attributes.EMPTY;
       private ScheduledExecutorService scheduledExecutorService;
       private ChannelLogger channelLogger;
       private Executor executor;
@@ -515,6 +526,12 @@ public abstract class NameResolver {
         return this;
       }
 
+      /** See {@link Args#getChannelAttributes}. This is a required field, default empty. */
+      public Builder setChannelAttributes(@ChannelAttr Attributes channelAttributes) {
+        this.channelAttributes = checkNotNull(channelAttributes);
+        return this;
+      }
+
       /**
        * See {@link Args#getChannelLogger}.
        *
@@ -553,10 +570,16 @@ public abstract class NameResolver {
        * @since 1.21.0
        */
       public Args build() {
-        return
-            new Args(
-                defaultPort, proxyDetector, syncContext, serviceConfigParser,
-                scheduledExecutorService, channelLogger, executor, overrideAuthority);
+        return new Args(
+            defaultPort,
+            proxyDetector,
+            syncContext,
+            serviceConfigParser,
+            channelAttributes,
+            scheduledExecutorService,
+            channelLogger,
+            executor,
+            overrideAuthority);
       }
     }
   }
