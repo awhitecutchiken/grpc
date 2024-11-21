@@ -36,10 +36,8 @@ import io.grpc.internal.BackoffPolicy;
 import io.grpc.xds.client.Bootstrapper.ServerInfo;
 import io.grpc.xds.client.EnvoyProtoData.Node;
 import io.grpc.xds.client.XdsClient.ProcessingTracker;
-import io.grpc.xds.client.XdsClient.ResourceStore;
 import io.grpc.xds.client.XdsClient.XdsResponseHandler;
 import io.grpc.xds.client.XdsLogger.XdsLogLevel;
-import io.grpc.xds.client.XdsTransportFactory.EventHandler;
 import io.grpc.xds.client.XdsTransportFactory.StreamingCall;
 import io.grpc.xds.client.XdsTransportFactory.XdsTransport;
 import java.util.Collection;
@@ -65,12 +63,11 @@ final class ControlPlaneClient {
   private final ServerInfo serverInfo;
   private final XdsTransport xdsTransport;
   private final XdsResponseHandler xdsResponseHandler;
-  private final ResourceStore resourceStore;
+  private final XdsClient.ResourceStore resourceStore;
   private final ScheduledExecutorService timeService;
   private final BackoffPolicy.Provider backoffPolicyProvider;
   private final Stopwatch stopwatch;
   private final Node bootstrapNode;
-  private final XdsClient xdsClient;
 
   // Last successfully applied version_info for each resource type. Starts with empty string.
   // A version_info is used to update management server with client's most recent knowledge of
@@ -78,13 +75,16 @@ final class ControlPlaneClient {
   private final Map<XdsResourceType<?>, String> versions = new HashMap<>();
 
   private boolean shutdown;
+  private boolean lastStateWasReady;
+  private boolean inError;
+
   @Nullable
   private AdsStream adsStream;
   @Nullable
   private BackoffPolicy retryBackoffPolicy;
   @Nullable
   private ScheduledHandle rpcRetryTimer;
-  private MessagePrettyPrinter messagePrinter;
+  private final MessagePrettyPrinter messagePrinter;
 
   /** An entity that manages ADS RPCs over a single channel. */
   ControlPlaneClient(
@@ -92,13 +92,12 @@ final class ControlPlaneClient {
       ServerInfo serverInfo,
       Node bootstrapNode,
       XdsResponseHandler xdsResponseHandler,
-      ResourceStore resourceStore,
+      XdsClient.ResourceStore resourceStore,
       ScheduledExecutorService
       timeService,
       SynchronizationContext syncContext,
       BackoffPolicy.Provider backoffPolicyProvider,
       Supplier<Stopwatch> stopwatchSupplier,
-      XdsClient xdsClient,
       MessagePrettyPrinter messagePrinter) {
     this.serverInfo = checkNotNull(serverInfo, "serverInfo");
     this.xdsTransport = checkNotNull(xdsTransport, "xdsTransport");
@@ -108,7 +107,6 @@ final class ControlPlaneClient {
     this.timeService = checkNotNull(timeService, "timeService");
     this.syncContext = checkNotNull(syncContext, "syncContext");
     this.backoffPolicyProvider = checkNotNull(backoffPolicyProvider, "backoffPolicyProvider");
-    this.xdsClient = checkNotNull(xdsClient, "xdsClient");
     this.messagePrinter = checkNotNull(messagePrinter, "messagePrinter");
     stopwatch = checkNotNull(stopwatchSupplier, "stopwatchSupplier").get();
     logId = InternalLogId.allocate("xds-client", serverInfo.target());
@@ -138,6 +136,10 @@ final class ControlPlaneClient {
     return logId.toString();
   }
 
+  public ServerInfo getServerInfo() {
+    return serverInfo;
+  }
+
   /**
    * Updates the resource subscription for the given resource type.
    */
@@ -148,7 +150,15 @@ final class ControlPlaneClient {
     }
     if (adsStream == null) {
       startRpcStream();
+      // when the stream becomes ready, it will send the discovery requests
+      return;
     }
+
+    // We will do the rest of the method as part of the readyHandler when the stream is ready.
+    if (!lastStateWasReady) {
+      return;
+    }
+
     Collection<String> resources = resourceStore.getSubscribedResources(serverInfo, resourceType);
     if (resources == null) {
       resources = Collections.emptyList();
@@ -203,8 +213,22 @@ final class ControlPlaneClient {
 
   // Must be synchronized.
   boolean isReady() {
-    return adsStream != null && adsStream.call != null && adsStream.call.isReady();
+    return adsStream != null && adsStream.call != null
+        && adsStream.call.isReady() && !adsStream.closed;
   }
+
+  boolean isResponseReceived() {
+    return adsStream != null && adsStream.responseReceived;
+  }
+
+  boolean isConnected() {
+    return lastStateWasReady;
+  }
+
+  boolean isInError() {
+    return inError;
+  }
+
 
   /**
    * Starts a timer for each requested resource that hasn't been responded to and
@@ -213,15 +237,21 @@ final class ControlPlaneClient {
   // Must be synchronized.
   void readyHandler() {
     if (!isReady()) {
+      logger.log(XdsLogLevel.DEBUG, "ADS stream ready handler called, but not ready {0}", logId);
       return;
     }
 
-    if (isInBackoff()) {
+    logger.log(XdsLogLevel.DEBUG, "ADS stream ready {0}", logId);
+
+    if (rpcRetryTimer != null) {
       rpcRetryTimer.cancel();
       rpcRetryTimer = null;
     }
 
-    xdsClient.startSubscriberTimersIfNeeded(serverInfo);
+    if (!lastStateWasReady) {
+      lastStateWasReady = true;
+      xdsResponseHandler.handleStreamRestarted(serverInfo);
+    }
   }
 
   /**
@@ -232,27 +262,50 @@ final class ControlPlaneClient {
   private void startRpcStream() {
     checkState(adsStream == null, "Previous adsStream has not been cleared yet");
     adsStream = new AdsStream();
+    adsStream.start();
     logger.log(XdsLogLevel.INFO, "ADS stream started");
     stopwatch.reset().start();
+  }
+
+  void sendDiscoveryRequests() {
+    if (adsStream == null) {
+      startRpcStream();
+      // when the stream becomes ready, it will send the discovery requests
+      return;
+    }
+
+    if (isConnected()) {
+      adjustAllResourceSubscriptions();
+    }
+  }
+
+  void adjustAllResourceSubscriptions() {
+    if (isInBackoff()) {
+      return;
+    }
+
+    Set<XdsResourceType<?>> subscribedResourceTypes =
+        new HashSet<>(resourceStore.getSubscribedResourceTypesWithTypeUrl().values());
+
+    for (XdsResourceType<?> type : subscribedResourceTypes) {
+      adjustResourceSubscription(type);
+    }
   }
 
   @VisibleForTesting
   public final class RpcRetryTask implements Runnable {
     @Override
     public void run() {
-      if (shutdown) {
+      logger.log(XdsLogLevel.DEBUG, "Retry timeout. Restart ADS stream {0}", logId);
+      if (shutdown || isReady()) {
         return;
       }
-      startRpcStream();
-      Set<XdsResourceType<?>> subscribedResourceTypes =
-          new HashSet<>(resourceStore.getSubscribedResourceTypesWithTypeUrl().values());
-      for (XdsResourceType<?> type : subscribedResourceTypes) {
-        Collection<String> resources = resourceStore.getSubscribedResources(serverInfo, type);
-        if (resources != null) {
-          adsStream.sendDiscoveryRequest(type, resources);
-        }
+
+      if (adsStream == null) {
+        startRpcStream();
       }
-      xdsResponseHandler.handleStreamRestarted(serverInfo);
+
+      // handling CPC management is triggered in readyHandler
     }
   }
 
@@ -262,7 +315,7 @@ final class ControlPlaneClient {
     return resourceStore.getSubscribedResourceTypesWithTypeUrl().get(typeUrl);
   }
 
-  private class AdsStream implements EventHandler<DiscoveryResponse> {
+  private class AdsStream implements XdsTransportFactory.EventHandler<DiscoveryResponse> {
     private boolean responseReceived;
     private boolean closed;
     // Response nonce for the most recently received discovery responses of each resource type.
@@ -279,6 +332,9 @@ final class ControlPlaneClient {
     private AdsStream() {
       this.call = xdsTransport.createStreamingCall(methodDescriptor.getFullMethodName(),
           methodDescriptor.getRequestMarshaller(), methodDescriptor.getResponseMarshaller());
+    }
+
+    void start() {
       call.start(this);
     }
 
@@ -363,10 +419,13 @@ final class ControlPlaneClient {
     final void handleRpcResponse(XdsResourceType<?> type, String versionInfo, List<Any> resources,
                                  String nonce) {
       checkNotNull(type, "type");
+
       if (closed) {
         return;
       }
+
       responseReceived = true;
+      inError = false;
       respNonces.put(type, nonce);
       ProcessingTracker processingTracker = new ProcessingTracker(
           () -> call.startRecvMessage(), syncContext);
@@ -376,6 +435,10 @@ final class ControlPlaneClient {
     }
 
     private void handleRpcStreamClosed(Status status) {
+      if (this == adsStream || adsStream == null) {
+        lastStateWasReady = false;
+      }
+
       if (closed) {
         return;
       }
@@ -385,13 +448,16 @@ final class ControlPlaneClient {
         // has never been initialized.
         retryBackoffPolicy = backoffPolicyProvider.get();
       }
+
       // FakeClock in tests isn't thread-safe. Schedule the retry timer before notifying callbacks
       // to avoid TSAN races, since tests may wait until callbacks are called but then would run
       // concurrently with the stopwatch and schedule.
+
       long elapsed = stopwatch.elapsed(TimeUnit.NANOSECONDS);
       long delayNanos = Math.max(0, retryBackoffPolicy.nextBackoffNanos() - elapsed);
-      rpcRetryTimer = syncContext.schedule(
-          new RpcRetryTask(), delayNanos, TimeUnit.NANOSECONDS, timeService);
+
+      rpcRetryTimer =
+          syncContext.schedule(new RpcRetryTask(), delayNanos, TimeUnit.NANOSECONDS, timeService);
 
       Status newStatus = status;
       if (responseReceived) {
@@ -410,6 +476,7 @@ final class ControlPlaneClient {
       } else {
         // If the ADS stream is closed without ever having received a response from the server, then
         // the XdsClient should consider that a connectivity error (see gRFC A57).
+        inError = true;
         if (status.isOk()) {
           newStatus = Status.UNAVAILABLE.withDescription(
               "ADS stream closed with OK before receiving a response");
@@ -420,10 +487,8 @@ final class ControlPlaneClient {
       }
 
       closed = true;
-      xdsResponseHandler.handleStreamClosed(newStatus);
+      xdsResponseHandler.handleStreamClosed(newStatus, !responseReceived);
       cleanUp();
-
-      logger.log(XdsLogLevel.INFO, "Retry ADS stream in {0} ns", delayNanos);
     }
 
     private void close(Exception error) {
@@ -441,4 +506,5 @@ final class ControlPlaneClient {
       }
     }
   }
+
 }
