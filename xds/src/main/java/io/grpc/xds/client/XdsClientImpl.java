@@ -590,8 +590,8 @@ public final class XdsClientImpl extends XdsClient implements XdsClient.Resource
       // For State of the World services, notify watchers when their watched resource is missing
       // from the ADS update. Note that we can only do this if the resource update is coming from
       // the same xDS server that the ResourceSubscriber is subscribed to.
-      if (activatedCpClients.get(subscriber.authority).contains(controlPlaneClient)) {
-        subscriber.onAbsent(processingTracker);
+      if (getActiveCpc(subscriber.authority) == controlPlaneClient) {
+        subscriber.onAbsent(processingTracker, args.serverInfo);
       }
     }
   }
@@ -748,7 +748,7 @@ public final class XdsClientImpl extends XdsClient implements XdsClient.Resource
           logger.log(XdsLogLevel.INFO, "{0} resource {1} initial fetch timeout",
               type, resource);
           respTimer = null;
-          onAbsent(null);
+          onAbsent(null, activeCpc.getServerInfo());
         }
 
         @Override
@@ -835,21 +835,19 @@ public final class XdsClientImpl extends XdsClient implements XdsClient.Resource
              : "unknown";
     }
 
-    void onAbsent(@Nullable ProcessingTracker processingTracker) {
+    void onAbsent(@Nullable ProcessingTracker processingTracker, ServerInfo serverInfo) {
       if (respTimer != null && respTimer.isPending()) {  // too early to conclude absence
         return;
       }
 
       // Ignore deletion of State of the World resources when this feature is on,
       // and the resource is reusable.
-      ControlPlaneClient activeCpc = getActiveCpc(authority);
-      boolean ignoreResourceDeletionEnabled =
-          activeCpc != null && activeCpc.getServerInfo().ignoreResourceDeletion();
+      boolean ignoreResourceDeletionEnabled = serverInfo.ignoreResourceDeletion();
       if (ignoreResourceDeletionEnabled && type.isFullStateOfTheWorld() && data != null) {
         if (!resourceDeletionIgnored) {
           logger.log(XdsLogLevel.FORCE_WARNING,
               "xds server {0}: ignoring deletion for resource type {1} name {2}}",
-              activeCpc.getServerInfo().target(), type, resource);
+              serverInfo.target(), type, resource);
           resourceDeletionIgnored = true;
         }
         return;
