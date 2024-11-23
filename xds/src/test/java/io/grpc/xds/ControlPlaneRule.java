@@ -153,9 +153,9 @@ public class ControlPlaneRule extends TestWatcher {
    * Will shutdown existing server if needed.
    * Then creates a new server in the same way as {@link #starting(Description)} and starts it.
    */
-  public void restartTdServer() {
+  public void restartXdsServer() {
 
-    if (getServer() != null && !getServer().isShutdown()) {
+    if (getServer() != null && !getServer().isTerminated()) {
       getServer().shutdownNow();
       try {
         if (!getServer().awaitTermination(5, TimeUnit.SECONDS)) {

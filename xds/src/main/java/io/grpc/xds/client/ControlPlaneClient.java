@@ -217,7 +217,7 @@ final class ControlPlaneClient {
   }
 
   boolean isConnected() {
-    return adsStream != null && adsStream.lastStateWasReady;
+    return adsStream != null && adsStream.sentInitialRequest;
   }
 
   boolean isInError() {
@@ -226,17 +226,19 @@ final class ControlPlaneClient {
 
 
   /**
-   * Starts a timer for each requested resource that hasn't been responded to and
-   * has been waiting for the channel to get ready.
+   * Cleans up outstanding rpcRetryTimer if present, since we are communicating.
+   * If we haven't sent the initial discovery request for this RPC stream, we will delegate to
+   * xdsResponseHandler (in practice XdsClientImpl) to do any initialization for a new active
+   * stream, including sending the initial discovery request.
    */
   // Must be synchronized.
-  void readyHandler(boolean switchingToReady) {
+  void readyHandler(boolean shouldSendInitialRequest) {
     if (rpcRetryTimer != null) {
       rpcRetryTimer.cancel();
       rpcRetryTimer = null;
     }
 
-    if (switchingToReady) {
+    if (shouldSendInitialRequest) {
       xdsResponseHandler.handleStreamRestarted(serverInfo);
     }
   }
@@ -304,7 +306,7 @@ final class ControlPlaneClient {
 
   private class AdsStream implements XdsTransportFactory.EventHandler<DiscoveryResponse> {
     private boolean responseReceived;
-    private boolean lastStateWasReady;
+    private boolean sentInitialRequest;
     private boolean closed;
     // Response nonce for the most recently received discovery responses of each resource type.
     // Client initiated requests start response nonce with empty string.
@@ -377,9 +379,9 @@ final class ControlPlaneClient {
 
         logger.log(XdsLogLevel.DEBUG, "ADS stream ready {0}", logId);
 
-        boolean wasReady = lastStateWasReady;
-        lastStateWasReady = true;
-        readyHandler(!wasReady);
+        boolean hadSentInitialRequest = sentInitialRequest;
+        sentInitialRequest = true;
+        readyHandler(!hadSentInitialRequest);
       });
     }
 
@@ -497,9 +499,9 @@ final class ControlPlaneClient {
     }
 
     private void cleanUp() {
+      sentInitialRequest = false;
       if (adsStream == this) {
         adsStream = null;
-        lastStateWasReady = false;
       }
     }
   }

@@ -401,9 +401,11 @@ public abstract class XdsClient {
     // Must be synchronized.
     void handleStreamClosed(Status error, boolean shouldTryFallback);
 
-    /** Called when the ADS stream has established communication with the xds server.
+    /**
+     * Called when the ADS stream has established communication with the xds server.
      * Is expected to manage the ControlPlanClients and cache updates associated with
      * Moving to or from a fallback server.
+     * Should start subscribed timers as needed and send discovery requests
      *
      * <p>Must be synchronized.
      */

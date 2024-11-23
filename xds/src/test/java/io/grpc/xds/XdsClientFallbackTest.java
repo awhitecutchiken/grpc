@@ -137,7 +137,7 @@ public class XdsClientFallbackTest {
   private XdsClient.ResourceWatcher<XdsClusterResource.CdsUpdate> cdsWatcher2;
 
   @Rule(order = 0)
-  public ControlPlaneRule mainTdServer =
+  public ControlPlaneRule mainXdsServer =
       new ControlPlaneRule(8090).setServerHostName(MAIN_SERVER);
 
   @Rule(order = 1)
@@ -149,10 +149,10 @@ public class XdsClientFallbackTest {
   @Before
   public void setUp() throws XdsInitializationException {
     originalEnableXdsFallback = CommonBootstrapperTestUtils.setEnableXdsFallback(true);
-    if (mainTdServer == null) {
+    if (mainXdsServer == null) {
       throw new XdsInitializationException("Failed to create ControlPlaneRule for main TD server");
     }
-    setAdsConfig(mainTdServer, MAIN_SERVER);
+    setAdsConfig(mainXdsServer, MAIN_SERVER);
     setAdsConfig(fallbackServer, FALLBACK_SERVER);
 
     SharedXdsClientPoolProvider clientPoolProvider = new SharedXdsClientPoolProvider();
@@ -192,14 +192,14 @@ public class XdsClientFallbackTest {
         String.format("Set ADS config for %s with address %s", serverName, edsInetSocketAddress));
   }
 
-  private void restartServer(TdServerType type) {
+  private void restartServer(XdsServerType type) {
     switch (type) {
       case MAIN:
-        mainTdServer.restartTdServer();
-        setAdsConfig(mainTdServer, MAIN_SERVER);
+        mainXdsServer.restartXdsServer();
+        setAdsConfig(mainXdsServer, MAIN_SERVER);
         break;
       case FALLBACK:
-        fallbackServer.restartTdServer();
+        fallbackServer.restartXdsServer();
         setAdsConfig(fallbackServer, FALLBACK_SERVER);
         break;
       default:
@@ -210,8 +210,8 @@ public class XdsClientFallbackTest {
   // This is basically a control test to make sure everything is set up correctly.
   @Test
   public void everything_okay() {
-    restartServer(TdServerType.MAIN);
-    restartServer(TdServerType.FALLBACK);
+    restartServer(XdsServerType.MAIN);
+    restartServer(XdsServerType.FALLBACK);
     xdsClient = xdsClientPool.getObject();
     xdsClient.watchXdsResource(XdsListenerResource.getInstance(), MAIN_SERVER, ldsWatcher);
     verify(ldsWatcher, timeout(5000)).onChanged(
@@ -224,8 +224,8 @@ public class XdsClientFallbackTest {
 
   @Test
   public void mainServerDown_fallbackServerUp() {
-    mainTdServer.getServer().shutdownNow();
-    restartServer(TdServerType.FALLBACK);
+    mainXdsServer.getServer().shutdownNow();
+    restartServer(XdsServerType.FALLBACK);
     xdsClient = xdsClientPool.getObject();
     log.log(Level.FINE, "Fallback port = " + fallbackServer.getServer().getPort());
 
@@ -238,27 +238,27 @@ public class XdsClientFallbackTest {
 
   @Test
   public void both_down_restart_main() {
-    mainTdServer.getServer().shutdownNow();
+    mainXdsServer.getServer().shutdownNow();
     fallbackServer.getServer().shutdownNow();
     xdsClient = xdsClientPool.getObject();
 
     xdsClient.watchXdsResource(XdsListenerResource.getInstance(), MAIN_SERVER, ldsWatcher);
     verify(ldsWatcher, timeout(5000).times(0)).onChanged(any());
 
-    restartServer(TdServerType.MAIN);
+    restartServer(XdsServerType.MAIN);
 
     xdsClient.watchXdsResource(
         XdsRouteConfigureResource.getInstance(), RDS_NAME, rdsWatcher);
 
     verify(ldsWatcher, timeout(300000)).onChanged(
         XdsListenerResource.LdsUpdate.forApiListener(MAIN_HTTP_CONNECTION_MANAGER));
-    mainTdServer.getServer().shutdownNow();
+    mainXdsServer.getServer().shutdownNow();
   }
 
   @Test
   public void mainDown_fallbackUp_restart_main() {
-    mainTdServer.getServer().shutdownNow();
-    fallbackServer.restartTdServer();
+    mainXdsServer.getServer().shutdownNow();
+    fallbackServer.restartXdsServer();
     xdsClient = xdsClientPool.getObject();
     InOrder inOrder = inOrder(ldsWatcher, rdsWatcher, cdsWatcher, cdsWatcher2);
 
@@ -269,7 +269,7 @@ public class XdsClientFallbackTest {
     inOrder.verify(cdsWatcher, timeout(5000)).onChanged(any());
     Object fallbackCpcBlob = ((XdsClientImpl) xdsClient).getActiveCpcForTest(null);
 
-    restartServer(TdServerType.MAIN);
+    restartServer(XdsServerType.MAIN);
 
     verify(ldsWatcher, timeout(5000)).onChanged(
         XdsListenerResource.LdsUpdate.forApiListener(MAIN_HTTP_CONNECTION_MANAGER));
@@ -289,8 +289,8 @@ public class XdsClientFallbackTest {
   // This test takes a long time because of the 16 sec timeout for non-existent resource
   @Test
   public void connect_then_mainServerDown_fallbackServerUp() throws InterruptedException {
-    restartServer(TdServerType.MAIN);
-    restartServer(TdServerType.FALLBACK);
+    restartServer(XdsServerType.MAIN);
+    restartServer(XdsServerType.FALLBACK);
     xdsClient = xdsClientPool.getObject();
 
     xdsClient.watchXdsResource(XdsListenerResource.getInstance(), MAIN_SERVER, ldsWatcher);
@@ -301,7 +301,7 @@ public class XdsClientFallbackTest {
     xdsClient.watchXdsResource(XdsRouteConfigureResource.getInstance(), RDS_NAME, rdsWatcher);
     verify(rdsWatcher, timeout(5000)).onChanged(any());
 
-    mainTdServer.getServer().shutdownNow();
+    mainXdsServer.getServer().shutdownNow();
     TimeUnit.SECONDS.sleep(5); // TODO(lsafran) Use FakeClock so test runs faster
 
     // Shouldn't do fallback since all watchers are loaded
@@ -339,7 +339,7 @@ public class XdsClientFallbackTest {
 
   @Test
   public void connect_then_mainServerRestart_fallbackServerdown() {
-    restartServer(TdServerType.MAIN);
+    restartServer(XdsServerType.MAIN);
     xdsClient = xdsClientPool.getObject();
 
     xdsClient.watchXdsResource(XdsListenerResource.getInstance(), MAIN_SERVER, ldsWatcher);
@@ -347,12 +347,12 @@ public class XdsClientFallbackTest {
     verify(ldsWatcher, timeout(5000)).onChanged(
         XdsListenerResource.LdsUpdate.forApiListener(MAIN_HTTP_CONNECTION_MANAGER));
 
-    mainTdServer.getServer().shutdownNow();
+    mainXdsServer.getServer().shutdownNow();
     fallbackServer.getServer().shutdownNow();
 
     xdsClient.watchXdsResource(XdsClusterResource.getInstance(), CLUSTER_NAME, cdsWatcher);
 
-    restartServer(TdServerType.MAIN);
+    restartServer(XdsServerType.MAIN);
 
     verify(cdsWatcher, timeout(5000)).onChanged(any());
     verify(ldsWatcher, timeout(5000).atLeastOnce()).onChanged(
@@ -378,10 +378,10 @@ public class XdsClientFallbackTest {
     verify(ldsWatcher, timeout(5000)).onChanged(
         XdsListenerResource.LdsUpdate.forApiListener(MAIN_HTTP_CONNECTION_MANAGER));
 
-    restartServer(TdServerType.MAIN);
+    restartServer(XdsServerType.MAIN);
 
     assertThat(getLrsServerInfo("localhost:" + fallbackServer.getServer().getPort())).isNull();
-    assertThat(getLrsServerInfo("localhost:" + mainTdServer.getServer().getPort())).isNotNull();
+    assertThat(getLrsServerInfo("localhost:" + mainXdsServer.getServer().getPort())).isNotNull();
 
     xdsClient.watchXdsResource(XdsClusterResource.getInstance(), CLUSTER_NAME, cdsWatcher);
 
@@ -396,7 +396,7 @@ public class XdsClientFallbackTest {
             "cluster", CLUSTER_NAME),
          "xds_servers", ImmutableList.of(
             ImmutableMap.of(
-                "server_uri", "localhost:" + mainTdServer.getServer().getPort(),
+                "server_uri", "localhost:" + mainXdsServer.getServer().getPort(),
                 "channel_creds", Collections.singletonList(
                     ImmutableMap.of("type", "insecure")
                 ),
@@ -414,7 +414,7 @@ public class XdsClientFallbackTest {
       );
   }
 
-  private enum TdServerType {
+  private enum XdsServerType {
     MAIN,
     FALLBACK
   }
