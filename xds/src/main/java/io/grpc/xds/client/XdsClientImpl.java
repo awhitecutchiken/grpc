@@ -982,19 +982,15 @@ public final class XdsClientImpl extends XdsClient implements XdsClient.Resource
         return;
       }
 
-      boolean needToSendDiscoveryRequests = false;
       for (Map.Entry<String, List<ControlPlaneClient>> me : activatedCpClients.entrySet()) {
         if (me.getValue().contains(controlPlaneClient)) {
-          needToSendDiscoveryRequests = true;
           if (getActiveCpc(me.getKey()) == controlPlaneClient) {
             startSubscriberTimersIfNeeded(me.getKey());
           }
         }
       }
 
-      if (needToSendDiscoveryRequests) {
-        controlPlaneClient.sendDiscoveryRequests();
-      }
+      controlPlaneClient.sendDiscoveryRequests();
     }
 
   }
