@@ -225,11 +225,6 @@ final class ControlPlaneClient {
    */
   // Must be synchronized.
   void readyHandler(boolean shouldSendInitialRequest) {
-    if (rpcRetryTimer != null) {
-      rpcRetryTimer.cancel();
-      rpcRetryTimer = null;
-    }
-
     if (shouldSendInitialRequest) {
       xdsResponseHandler.handleStreamRestarted(serverInfo);
     }
@@ -242,6 +237,12 @@ final class ControlPlaneClient {
   // Must be synchronized.
   private void startRpcStream() {
     checkState(adsStream == null, "Previous adsStream has not been cleared yet");
+
+    if (rpcRetryTimer != null) {
+      rpcRetryTimer.cancel();
+      rpcRetryTimer = null;
+    }
+
     adsStream = new AdsStream();
     adsStream.start();
     logger.log(XdsLogLevel.INFO, "ADS stream started");
@@ -274,13 +275,11 @@ final class ControlPlaneClient {
     @Override
     public void run() {
       logger.log(XdsLogLevel.DEBUG, "Retry timeout. Restart ADS stream {0}", logId);
-      if (shutdown || isReady()) {
+      if (shutdown) {
         return;
       }
 
-      if (adsStream == null) {
-        startRpcStream();
-      }
+      startRpcStream();
 
       // handling CPC management is triggered in readyHandler
     }
