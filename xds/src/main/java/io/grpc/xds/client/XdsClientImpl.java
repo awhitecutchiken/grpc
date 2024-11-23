@@ -324,7 +324,7 @@ public final class XdsClientImpl extends XdsClient implements XdsClient.Resource
       controlPlaneClients.add(cpc);
       logger.log(XdsLogLevel.DEBUG, "Adding control plane client {0} to authority {1}",
           cpc, authority);
-      cpcToUse.adjustAllResourceSubscriptions();
+      cpcToUse.sendDiscoveryRequests();
       if (cpc == cpcToUse) {
         break;
       }
@@ -619,7 +619,7 @@ public final class XdsClientImpl extends XdsClient implements XdsClient.Resource
         cpc.shutdown();
         serverCpClientMap.remove(cpc.getServerInfo());
       } else {
-        cpc.adjustAllResourceSubscriptions();
+        cpc.sendDiscoveryRequests();
       }
     }
   }

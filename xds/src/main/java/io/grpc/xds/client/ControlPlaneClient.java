@@ -144,7 +144,7 @@ final class ControlPlaneClient {
    */
   // Must be synchronized.
   void adjustResourceSubscription(XdsResourceType<?> resourceType) {
-    if (isInBackoff()) {
+    if (rpcRetryTimer != null && rpcRetryTimer.isPending()) {
       return;
     }
     if (adsStream == null) {
@@ -202,14 +202,6 @@ final class ControlPlaneClient {
     adsStream.sendDiscoveryRequest(type, versionInfo, resources, nonce, errorDetail);
   }
 
-  /**
-   * Returns {@code true} if the resource discovery is currently in backoff.
-   */
-  // Must be synchronized.
-  boolean isInBackoff() {
-    return rpcRetryTimer != null && rpcRetryTimer.isPending();
-  }
-
   // Must be synchronized.
   boolean isReady() {
     return adsStream != null && adsStream.call != null
@@ -257,6 +249,10 @@ final class ControlPlaneClient {
   }
 
   void sendDiscoveryRequests() {
+    if (rpcRetryTimer != null && rpcRetryTimer.isPending()) {
+      return;
+    }
+
     if (adsStream == null) {
       startRpcStream();
       // when the stream becomes ready, it will send the discovery requests
@@ -264,20 +260,12 @@ final class ControlPlaneClient {
     }
 
     if (isConnected()) {
-      adjustAllResourceSubscriptions();
-    }
-  }
+      Set<XdsResourceType<?>> subscribedResourceTypes =
+          new HashSet<>(resourceStore.getSubscribedResourceTypesWithTypeUrl().values());
 
-  void adjustAllResourceSubscriptions() {
-    if (isInBackoff()) {
-      return;
-    }
-
-    Set<XdsResourceType<?>> subscribedResourceTypes =
-        new HashSet<>(resourceStore.getSubscribedResourceTypesWithTypeUrl().values());
-
-    for (XdsResourceType<?> type : subscribedResourceTypes) {
-      adjustResourceSubscription(type);
+      for (XdsResourceType<?> type : subscribedResourceTypes) {
+        adjustResourceSubscription(type);
+      }
     }
   }
 
