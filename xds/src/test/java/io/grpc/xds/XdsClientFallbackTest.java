@@ -138,11 +138,11 @@ public class XdsClientFallbackTest {
 
   @Rule(order = 0)
   public ControlPlaneRule mainXdsServer =
-      new ControlPlaneRule(8090).setServerHostName(MAIN_SERVER);
+      new ControlPlaneRule().setServerHostName(MAIN_SERVER);
 
   @Rule(order = 1)
   public ControlPlaneRule fallbackServer =
-      new ControlPlaneRule(8095).setServerHostName(MAIN_SERVER);
+      new ControlPlaneRule().setServerHostName(MAIN_SERVER);
 
   @Rule public final MockitoRule mocks = MockitoJUnit.rule();
 

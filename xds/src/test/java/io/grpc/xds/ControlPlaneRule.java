@@ -89,15 +89,11 @@ public class ControlPlaneRule extends TestWatcher {
   private XdsTestControlPlaneService controlPlaneService;
   private XdsTestLoadReportingService loadReportingService;
   private XdsNameResolverProvider nameResolverProvider;
-  private final int port;
+  private int port; // Only change from 0 to actual port used in the server.
 
   public ControlPlaneRule() {
-    this(0);
-  }
-
-  public ControlPlaneRule(int port) {
     serverHostName = "test-server";
-    this.port = port;
+    this.port = 0;
   }
 
   public ControlPlaneRule setServerHostName(String serverHostName) {
@@ -179,6 +175,10 @@ public class ControlPlaneRule extends TestWatcher {
         .addService(loadReportingService)
         .build()
         .start();
+
+    if (port == 0) {
+      port = server.getPort();
+    }
   }
 
   /**
