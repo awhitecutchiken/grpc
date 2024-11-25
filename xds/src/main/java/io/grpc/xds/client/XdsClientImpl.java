@@ -291,9 +291,9 @@ public final class XdsClientImpl extends XdsClient implements XdsClient.Resource
           Status.INVALID_ARGUMENT.withDescription(subscriber.errorDescription), null);
       return new CpcWithFallbackState(null, false);
     } catch (IOException e) {
-      logger.log(XdsLogLevel.WARNING,
-          "Could not create a control plane client for authority {0}",
-          subscriber.authority);
+      logger.log(XdsLogLevel.DEBUG,
+          "Could not create a control plane client for authority {0}: {1}",
+          subscriber.authority, e.getMessage());
       return new CpcWithFallbackState(null, false);
     }
 
