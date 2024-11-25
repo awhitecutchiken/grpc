@@ -403,9 +403,7 @@ public abstract class XdsClient {
 
     /**
      * Called when the ADS stream has established communication with the xds server.
-     * Is expected to manage the ControlPlanClients and cache updates associated with
-     * Moving to or from a fallback server.
-     * Should start subscribed timers as needed and send discovery requests
+     * Should start subscribed timers as needed.
      *
      * <p>Must be synchronized.
      */

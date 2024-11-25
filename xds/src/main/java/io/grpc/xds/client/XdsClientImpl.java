@@ -989,8 +989,6 @@ public final class XdsClientImpl extends XdsClient implements XdsClient.Resource
           }
         }
       }
-
-      controlPlaneClient.sendDiscoveryRequests();
     }
 
   }

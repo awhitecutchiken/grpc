@@ -221,12 +221,13 @@ final class ControlPlaneClient {
    * Cleans up outstanding rpcRetryTimer if present, since we are communicating.
    * If we haven't sent the initial discovery request for this RPC stream, we will delegate to
    * xdsResponseHandler (in practice XdsClientImpl) to do any initialization for a new active
-   * stream, including sending the initial discovery request.
+   * stream such as starting timers.  We then send the initial discovery request.
    */
   // Must be synchronized.
   void readyHandler(boolean shouldSendInitialRequest) {
     if (shouldSendInitialRequest) {
       xdsResponseHandler.handleStreamRestarted(serverInfo);
+      sendDiscoveryRequests();
     }
   }
 
