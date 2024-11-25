@@ -486,7 +486,6 @@ final class ControlPlaneClient {
     }
 
     private void cleanUp() {
-      sentInitialRequest = false;
       if (adsStream == this) {
         adsStream = null;
       }

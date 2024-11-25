@@ -192,26 +192,11 @@ public class XdsClientFallbackTest {
         String.format("Set ADS config for %s with address %s", serverName, edsInetSocketAddress));
   }
 
-  private void restartServer(XdsServerType type) {
-    switch (type) {
-      case MAIN:
-        mainXdsServer.restartXdsServer();
-        setAdsConfig(mainXdsServer, MAIN_SERVER);
-        break;
-      case FALLBACK:
-        fallbackServer.restartXdsServer();
-        setAdsConfig(fallbackServer, FALLBACK_SERVER);
-        break;
-      default:
-        throw new IllegalArgumentException("Unknown server type: " + type);
-    }
-  }
-
   // This is basically a control test to make sure everything is set up correctly.
   @Test
   public void everything_okay() {
-    restartServer(XdsServerType.MAIN);
-    restartServer(XdsServerType.FALLBACK);
+    mainXdsServer.restartXdsServer();
+    fallbackServer.restartXdsServer();
     xdsClient = xdsClientPool.getObject();
     xdsClient.watchXdsResource(XdsListenerResource.getInstance(), MAIN_SERVER, ldsWatcher);
     verify(ldsWatcher, timeout(5000)).onChanged(
@@ -225,7 +210,7 @@ public class XdsClientFallbackTest {
   @Test
   public void mainServerDown_fallbackServerUp() {
     mainXdsServer.getServer().shutdownNow();
-    restartServer(XdsServerType.FALLBACK);
+    fallbackServer.restartXdsServer();
     xdsClient = xdsClientPool.getObject();
     log.log(Level.FINE, "Fallback port = " + fallbackServer.getServer().getPort());
 
@@ -245,7 +230,7 @@ public class XdsClientFallbackTest {
     xdsClient.watchXdsResource(XdsListenerResource.getInstance(), MAIN_SERVER, ldsWatcher);
     verify(ldsWatcher, timeout(5000).times(0)).onChanged(any());
 
-    restartServer(XdsServerType.MAIN);
+    mainXdsServer.restartXdsServer();
 
     xdsClient.watchXdsResource(
         XdsRouteConfigureResource.getInstance(), RDS_NAME, rdsWatcher);
@@ -269,7 +254,7 @@ public class XdsClientFallbackTest {
     inOrder.verify(cdsWatcher, timeout(5000)).onChanged(any());
     Object fallbackCpcBlob = ((XdsClientImpl) xdsClient).getActiveCpcForTest(null);
 
-    restartServer(XdsServerType.MAIN);
+    mainXdsServer.restartXdsServer();
 
     verify(ldsWatcher, timeout(5000)).onChanged(
         XdsListenerResource.LdsUpdate.forApiListener(MAIN_HTTP_CONNECTION_MANAGER));
@@ -289,8 +274,8 @@ public class XdsClientFallbackTest {
   // This test takes a long time because of the 16 sec timeout for non-existent resource
   @Test
   public void connect_then_mainServerDown_fallbackServerUp() throws InterruptedException {
-    restartServer(XdsServerType.MAIN);
-    restartServer(XdsServerType.FALLBACK);
+    mainXdsServer.restartXdsServer();
+    fallbackServer.restartXdsServer();
     xdsClient = xdsClientPool.getObject();
 
     xdsClient.watchXdsResource(XdsListenerResource.getInstance(), MAIN_SERVER, ldsWatcher);
@@ -339,7 +324,7 @@ public class XdsClientFallbackTest {
 
   @Test
   public void connect_then_mainServerRestart_fallbackServerdown() {
-    restartServer(XdsServerType.MAIN);
+    mainXdsServer.restartXdsServer();
     xdsClient = xdsClientPool.getObject();
 
     xdsClient.watchXdsResource(XdsListenerResource.getInstance(), MAIN_SERVER, ldsWatcher);
@@ -352,7 +337,7 @@ public class XdsClientFallbackTest {
 
     xdsClient.watchXdsResource(XdsClusterResource.getInstance(), CLUSTER_NAME, cdsWatcher);
 
-    restartServer(XdsServerType.MAIN);
+    mainXdsServer.restartXdsServer();
 
     verify(cdsWatcher, timeout(5000)).onChanged(any());
     verify(ldsWatcher, timeout(5000).atLeastOnce()).onChanged(
@@ -378,7 +363,7 @@ public class XdsClientFallbackTest {
     verify(ldsWatcher, timeout(5000)).onChanged(
         XdsListenerResource.LdsUpdate.forApiListener(MAIN_HTTP_CONNECTION_MANAGER));
 
-    restartServer(XdsServerType.MAIN);
+    mainXdsServer.restartXdsServer();
 
     assertThat(getLrsServerInfo("localhost:" + fallbackServer.getServer().getPort())).isNull();
     assertThat(getLrsServerInfo("localhost:" + mainXdsServer.getServer().getPort())).isNotNull();
@@ -414,8 +399,4 @@ public class XdsClientFallbackTest {
       );
   }
 
-  private enum XdsServerType {
-    MAIN,
-    FALLBACK
-  }
 }
