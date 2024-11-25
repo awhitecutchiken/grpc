@@ -301,7 +301,16 @@ public final class XdsClientImpl extends XdsClient implements XdsClient.Resource
     if (cpcToUse != activeCpClient) {
       addCpcToAuthority(subscriber.authority, cpcToUse); // makes it active
       if (activeCpClient != null) {
-        didFallback = fallBackToCpc(cpcToUse, subscriber.authority, activeCpClient);
+        didFallback = cpcToUse != null && !cpcToUse.isInError();
+        if (didFallback) {
+          logger.log(XdsLogLevel.INFO, "Falling back to XDS server {0}",
+              cpcToUse.getServerInfo().target());
+          restartMatchingSubscriberTimers(subscriber.authority);
+          didFallback = true;
+        } else {
+          logger.log(XdsLogLevel.WARNING, "No working fallback XDS Servers found from {0}",
+              activeCpClient.getServerInfo().target());
+        }
       }
     }
 
@@ -622,26 +631,6 @@ public final class XdsClientImpl extends XdsClient implements XdsClient.Resource
         cpc.sendDiscoveryRequests();
       }
     }
-  }
-
-  private boolean fallBackToCpc(ControlPlaneClient fallbackCpc, String authority,
-                                ControlPlaneClient oldCpc) {
-    boolean didFallback = false;
-    if (fallbackCpc != null && ! fallbackCpc.isInError()) {
-      logger.log(XdsLogLevel.INFO, "Falling back to XDS server {0}",
-          fallbackCpc.getServerInfo().target());
-
-      // Get authorities that aren't falling back
-      // If we don't already have a cached LDS resource, cache the current data value
-
-      restartMatchingSubscriberTimers(authority);
-      fallbackCpc.sendDiscoveryRequests();
-      didFallback = true;
-    } else {
-      logger.log(XdsLogLevel.WARNING, "No working fallback XDS Servers found from {0}",
-          oldCpc.getServerInfo().target());
-    }
-    return didFallback;
   }
 
   private void restartMatchingSubscriberTimers(String authority) {
