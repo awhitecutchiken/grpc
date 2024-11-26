@@ -14,14 +14,12 @@
  * limitations under the License.
  */
 
-package io.grpc.xds;
+package io.grpc.xds.client;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import io.grpc.internal.JsonParser;
-import io.grpc.xds.client.Bootstrapper;
 import io.grpc.xds.client.Bootstrapper.ServerInfo;
-import io.grpc.xds.client.EnvoyProtoData;
 import io.grpc.xds.internal.security.CommonTlsContextTestsUtil;
 import java.io.IOException;
 import java.util.HashMap;
@@ -144,5 +142,11 @@ public class CommonBootstrapperTestUtils {
         .node(EnvoyProtoData.Node.newBuilder().build())
         .certProviders(certProviders)
         .build();
+  }
+
+  public static boolean setEnableXdsFallback(boolean target) {
+    boolean oldValue = BootstrapperImpl.enableXdsFallback;
+    BootstrapperImpl.enableXdsFallback = target;
+    return oldValue;
   }
 }

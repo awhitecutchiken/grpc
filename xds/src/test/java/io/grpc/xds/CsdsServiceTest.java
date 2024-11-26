@@ -107,7 +107,7 @@ public class CsdsServiceTest {
       // because true->false return mutation prevents fetchClientStatus from completing the request.
       csdsStub = ClientStatusDiscoveryServiceGrpc
           .newBlockingStub(grpcServerRule.getChannel())
-          .withDeadline(Deadline.after(3, TimeUnit.SECONDS));
+          .withDeadline(Deadline.after(30, TimeUnit.SECONDS));
       csdsAsyncStub = ClientStatusDiscoveryServiceGrpc.newStub(grpcServerRule.getChannel());
     }
 
@@ -497,8 +497,8 @@ public class CsdsServiceTest {
 
     @Nullable
     @Override
-    public Collection<String> getSubscribedResources(ServerInfo serverInfo,
-                  XdsResourceType<? extends ResourceUpdate> type) {
+    public Collection<String> getSubscribedResources(
+        ServerInfo serverInfo, XdsResourceType<? extends ResourceUpdate> type) {
       return null;
     }
 
@@ -510,8 +510,7 @@ public class CsdsServiceTest {
 
   private static class FakeXdsClientPoolFactory implements XdsClientPoolFactory {
     private final Map<String, XdsClient> xdsClientMap = new HashMap<>();
-    private boolean isOldStyle
-        ;
+    private boolean isOldStyle;
 
     private FakeXdsClientPoolFactory(@Nullable XdsClient xdsClient) {
       if (xdsClient != null) {
