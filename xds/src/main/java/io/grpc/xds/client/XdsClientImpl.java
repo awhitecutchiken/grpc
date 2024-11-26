@@ -960,11 +960,9 @@ public final class XdsClientImpl extends XdsClient implements XdsClient.Resource
         return;
       }
 
-      for (Map.Entry<String, List<ControlPlaneClient>> me : activatedCpClients.entrySet()) {
-        if (me.getValue().contains(controlPlaneClient)) {
-          if (getActiveCpc(me.getKey()) == controlPlaneClient) {
-            startSubscriberTimersIfNeeded(me.getKey());
-          }
+      for (String authority : activatedCpClients.keySet()) {
+        if (getActiveCpc(authority) == controlPlaneClient) {
+          startSubscriberTimersIfNeeded(authority);
         }
       }
     }
