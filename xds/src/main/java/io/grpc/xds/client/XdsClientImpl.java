@@ -302,8 +302,6 @@ public final class XdsClientImpl extends XdsClient implements XdsClient.Resource
         if (didFallback) {
           logger.log(XdsLogLevel.INFO, "Falling back to XDS server {0}",
               cpcToUse.getServerInfo().target());
-          restartMatchingSubscriberTimers(subscriber.authority);
-          didFallback = true;
         } else {
           logger.log(XdsLogLevel.WARNING, "No working fallback XDS Servers found from {0}",
               activeCpClient.getServerInfo().target());
@@ -618,18 +616,6 @@ public final class XdsClientImpl extends XdsClient implements XdsClient.Resource
         serverCpClientMap.remove(cpc.getServerInfo());
       } else {
         cpc.sendDiscoveryRequests();
-      }
-    }
-  }
-
-  private void restartMatchingSubscriberTimers(String authority) {
-    // Restart the timers for all the watched resources that are associated with this stream
-    for (Map<String, ResourceSubscriber<? extends ResourceUpdate>> subscriberMap :
-        resourceSubscribers.values()) {
-      for (ResourceSubscriber<? extends ResourceUpdate> subscriber : subscriberMap.values()) {
-        if (!subscriber.hasResult() && Objects.equals(subscriber.authority, authority)) {
-          subscriber.restartTimer();
-        }
       }
     }
   }
