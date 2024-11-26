@@ -170,11 +170,6 @@ public final class XdsClientImpl extends XdsClient implements XdsClient.Resource
     return controlPlaneClients.get(controlPlaneClients.size() - 1);
   }
 
-  @VisibleForTesting
-  public Object getActiveCpcForTest(String authority) {
-    return getActiveCpc(authority);
-  }
-
   @Nullable
   @Override
   public Collection<String> getSubscribedResources(
@@ -415,14 +410,6 @@ public final class XdsClientImpl extends XdsClient implements XdsClient.Resource
   @Override
   public String toString() {
     return logId.toString();
-  }
-
-  @VisibleForTesting
-  public boolean isCpcBlobConnected(Object cpcBlob) {
-    if (cpcBlob instanceof ControlPlaneClient) {
-      return ((ControlPlaneClient) cpcBlob).isConnected();
-    }
-    throw new IllegalArgumentException("Blob must be a ControlPlaneClient");
   }
 
   private Set<String> getResourceKeys(XdsResourceType<?> xdsResourceType) {

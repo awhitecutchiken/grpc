@@ -17,7 +17,6 @@
 package io.grpc.xds;
 
 import static com.google.common.truth.Truth.assertThat;
-import static junit.framework.TestCase.assertFalse;
 import static org.mockito.AdditionalAnswers.delegatesTo;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -36,7 +35,6 @@ import io.grpc.xds.client.Bootstrapper;
 import io.grpc.xds.client.CommonBootstrapperTestUtils;
 import io.grpc.xds.client.LoadReportClient;
 import io.grpc.xds.client.XdsClient;
-import io.grpc.xds.client.XdsClientImpl;
 import io.grpc.xds.client.XdsInitializationException;
 import java.net.InetSocketAddress;
 import java.util.Collections;
@@ -284,23 +282,33 @@ public class XdsClientFallbackTest {
         XdsListenerResource.LdsUpdate.forApiListener(FALLBACK_HTTP_CONNECTION_MANAGER));
     xdsClient.watchXdsResource(XdsClusterResource.getInstance(), FALLBACK_CLUSTER_NAME, cdsWatcher);
     inOrder.verify(cdsWatcher, timeout(5000)).onChanged(any());
-    Object fallbackCpcBlob = ((XdsClientImpl) xdsClient).getActiveCpcForTest(null);
+
+    assertThat(fallbackServer.getService().getSubscriberCounts()
+        .get("type.googleapis.com/envoy.config.listener.v3.Listener")).isEqualTo(1);
+    verifyNoSubscribers(mainXdsServer);
 
     mainXdsServer.restartXdsServer();
 
     verify(ldsWatcher, timeout(5000)).onChanged(
         XdsListenerResource.LdsUpdate.forApiListener(MAIN_HTTP_CONNECTION_MANAGER));
+    verifyNoSubscribers(fallbackServer);
 
     xdsClient.watchXdsResource(XdsRouteConfigureResource.getInstance(), RDS_NAME, rdsWatcher);
     inOrder.verify(rdsWatcher, timeout(5000)).onChanged(any());
+    verifyNoSubscribers(fallbackServer);
 
     xdsClient.watchXdsResource(XdsClusterResource.getInstance(), CLUSTER_NAME, cdsWatcher2);
     inOrder.verify(cdsWatcher2, timeout(5000)).onChanged(any());
 
-    // verify that connection to fallback server is closed
-    assertFalse("Should have disconnected from fallback server",
-        ((XdsClientImpl) xdsClient).isCpcBlobConnected(fallbackCpcBlob));
+    verifyNoSubscribers(fallbackServer);
+    assertThat(mainXdsServer.getService().getSubscriberCounts()
+        .get("type.googleapis.com/envoy.config.listener.v3.Listener")).isEqualTo(1);
+  }
 
+  private static void verifyNoSubscribers(ControlPlaneRule rule) {
+    rule.getService().getSubscriberCounts().forEach((subscriber, count) -> {
+      assertThat(count).isEqualTo(0);
+    });
   }
 
   // This test takes a long time because of the 16 sec timeout for non-existent resource
