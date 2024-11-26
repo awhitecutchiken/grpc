@@ -254,10 +254,12 @@ public final class XdsClientImpl extends XdsClient implements XdsClient.Resource
           subscriber = new ResourceSubscriber<>(type, resourceName);
           resourceSubscribers.get(type).put(resourceName, subscriber);
 
-          CpcWithFallbackState cpcToUse = manageControlPlaneClient(subscriber);
-          if (cpcToUse.cpc != null) {
-            subscriber.restartTimer();
-            cpcToUse.cpc.adjustResourceSubscription(type);
+          if (subscriber.errorDescription == null) {
+            CpcWithFallbackState cpcToUse = manageControlPlaneClient(subscriber);
+            if (cpcToUse.cpc != null) {
+              subscriber.restartTimer();
+              cpcToUse.cpc.adjustResourceSubscription(type);
+            }
           }
         }
 

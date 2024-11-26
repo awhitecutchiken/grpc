@@ -222,22 +222,54 @@ public class XdsClientFallbackTest {
   }
 
   @Test
+  public void useBadAuthority() {
+    xdsClient = xdsClientPool.getObject();
+    InOrder inOrder = inOrder(ldsWatcher, rdsWatcher, rdsWatcher2, rdsWatcher3);
+
+    String badPrefix = "xdstp://authority.xds.bad/envoy.config.listener.v3.Listener/";
+    xdsClient.watchXdsResource(XdsListenerResource.getInstance(),
+        badPrefix + "listener.googleapis.com", ldsWatcher);
+    inOrder.verify(ldsWatcher, timeout(5000)).onError(any());
+
+    xdsClient.watchXdsResource(XdsRouteConfigureResource.getInstance(),
+        badPrefix + "route-config.googleapis.bad", rdsWatcher);
+    xdsClient.watchXdsResource(XdsRouteConfigureResource.getInstance(),
+        badPrefix + "route-config2.googleapis.bad", rdsWatcher2);
+    xdsClient.watchXdsResource(XdsRouteConfigureResource.getInstance(),
+        badPrefix + "route-config3.googleapis.bad", rdsWatcher3);
+    inOrder.verify(rdsWatcher, timeout(5000).times(1)).onError(any());
+    inOrder.verify(rdsWatcher2, timeout(5000).times(1)).onError(any());
+    inOrder.verify(rdsWatcher3, timeout(5000).times(1)).onError(any());
+    verify(rdsWatcher, never()).onChanged(any());
+
+    // even after an error, a valid one will still work
+    xdsClient.watchXdsResource(XdsListenerResource.getInstance(), MAIN_SERVER, ldsWatcher2);
+    verify(ldsWatcher2, timeout(5000)).onChanged(
+        XdsListenerResource.LdsUpdate.forApiListener(MAIN_HTTP_CONNECTION_MANAGER));
+  }
+
+  @Test
   public void both_down_restart_main() {
     mainXdsServer.getServer().shutdownNow();
     fallbackServer.getServer().shutdownNow();
     xdsClient = xdsClientPool.getObject();
 
     xdsClient.watchXdsResource(XdsListenerResource.getInstance(), MAIN_SERVER, ldsWatcher);
+    verify(ldsWatcher, timeout(5000)).onError(any());
     verify(ldsWatcher, timeout(5000).times(0)).onChanged(any());
+    xdsClient.watchXdsResource(
+        XdsRouteConfigureResource.getInstance(), RDS_NAME, rdsWatcher2);
+    verify(rdsWatcher2, timeout(5000)).onError(any());
 
     mainXdsServer.restartXdsServer();
 
     xdsClient.watchXdsResource(
         XdsRouteConfigureResource.getInstance(), RDS_NAME, rdsWatcher);
 
-    verify(ldsWatcher, timeout(300000)).onChanged(
+    verify(ldsWatcher, timeout(16000)).onChanged(
         XdsListenerResource.LdsUpdate.forApiListener(MAIN_HTTP_CONNECTION_MANAGER));
-    mainXdsServer.getServer().shutdownNow();
+    verify(rdsWatcher, timeout(5000)).onChanged(any());
+    verify(rdsWatcher2, timeout(5000)).onChanged(any());
   }
 
   @Test
