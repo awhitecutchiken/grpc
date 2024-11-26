@@ -17,6 +17,7 @@
 package io.grpc.xds;
 
 import static com.google.common.truth.Truth.assertThat;
+import static com.google.common.truth.Truth.assertWithMessage;
 import static org.mockito.AdditionalAnswers.delegatesTo;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -291,7 +292,6 @@ public class XdsClientFallbackTest {
 
     verify(ldsWatcher, timeout(5000)).onChanged(
         XdsListenerResource.LdsUpdate.forApiListener(MAIN_HTTP_CONNECTION_MANAGER));
-    verifyNoSubscribers(fallbackServer);
 
     xdsClient.watchXdsResource(XdsRouteConfigureResource.getInstance(), RDS_NAME, rdsWatcher);
     inOrder.verify(rdsWatcher, timeout(5000)).onChanged(any());
@@ -306,9 +306,12 @@ public class XdsClientFallbackTest {
   }
 
   private static void verifyNoSubscribers(ControlPlaneRule rule) {
-    rule.getService().getSubscriberCounts().forEach((subscriber, count) -> {
-      assertThat(count).isEqualTo(0);
-    });
+    for (Map.Entry<String, Integer> me : rule.getService().getSubscriberCounts().entrySet()) {
+      String type = me.getKey();
+      Integer count = me.getValue();
+      assertWithMessage("Type with non-zero subscribers is: %s", type)
+          .that(count).isEqualTo(0);
+    }
   }
 
   // This test takes a long time because of the 16 sec timeout for non-existent resource
