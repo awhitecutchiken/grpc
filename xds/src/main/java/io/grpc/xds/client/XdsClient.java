@@ -392,22 +392,17 @@ public abstract class XdsClient {
   }
 
   interface XdsResponseHandler {
+
     /** Called when a xds response is received. */
     void handleResourceResponse(
         XdsResourceType<?> resourceType, ServerInfo serverInfo, String versionInfo,
-        List<Any> resources, String nonce, ProcessingTracker processingTracker);
+        List<Any> resources, String nonce, boolean isFirstResponse,
+        ProcessingTracker processingTracker);
 
     /** Called when the ADS stream is closed passively. */
     // Must be synchronized.
     void handleStreamClosed(Status error, boolean shouldTryFallback);
 
-    /**
-     * Called when the ADS stream has established communication with the xds server.
-     * Should start subscribed timers as needed.
-     *
-     * <p>Must be synchronized.
-     */
-    void handleStreamRestarted(ServerInfo serverInfo);
   }
 
   public interface ResourceStore {
@@ -429,5 +424,11 @@ public abstract class XdsClient {
         ServerInfo serverInfo, XdsResourceType<? extends ResourceUpdate> type);
 
     Map<String, XdsResourceType<?>> getSubscribedResourceTypesWithTypeUrl();
+
+    /**
+     * For any of the subscribers to one of the specified resources, if there isn't a result or
+     * an existing timer for the resource, start a timer for the resource.
+     */
+    void startMissingResourceTimers(Collection<String> resourceNames, XdsResourceType resourceType);
   }
 }

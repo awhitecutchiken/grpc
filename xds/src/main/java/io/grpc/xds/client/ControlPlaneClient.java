@@ -163,6 +163,8 @@ final class ControlPlaneClient {
       resources = Collections.emptyList();
     }
     adsStream.sendDiscoveryRequest(resourceType, resources);
+    resourceStore.startMissingResourceTimers(resources, resourceType);
+
     if (resources.isEmpty()) {
       // The resource type no longer has subscribing resources; clean up references to it
       versions.remove(resourceType);
@@ -226,7 +228,6 @@ final class ControlPlaneClient {
   // Must be synchronized.
   void readyHandler(boolean shouldSendInitialRequest) {
     if (shouldSendInitialRequest) {
-      xdsResponseHandler.handleStreamRestarted(serverInfo);
       sendDiscoveryRequests();
     }
   }
@@ -414,13 +415,14 @@ final class ControlPlaneClient {
         return;
       }
 
+      boolean isFirstResponse = !responseReceived;
       responseReceived = true;
       inError = false;
       respNonces.put(type, nonce);
       ProcessingTracker processingTracker = new ProcessingTracker(
           () -> call.startRecvMessage(), syncContext);
       xdsResponseHandler.handleResourceResponse(type, serverInfo, versionInfo, resources, nonce,
-          processingTracker);
+          isFirstResponse, processingTracker);
       processingTracker.onComplete();
     }
 

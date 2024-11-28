@@ -196,6 +196,20 @@ public final class XdsClientImpl extends XdsClient implements XdsClient.Resource
     return retVal.isEmpty() ? null : retVal;
   }
 
+  @Override
+  public void startMissingResourceTimers(Collection<String> resourceNames,
+                                         XdsResourceType resourceType) {
+    Map<String, ResourceSubscriber<? extends ResourceUpdate>> subscriberMap =
+        resourceSubscribers.get(resourceType);
+
+    for (String resourceName : resourceNames) {
+      ResourceSubscriber<?> subscriber = subscriberMap.get(resourceName);
+      if (subscriber.respTimer == null && !subscriber.hasResult()) {
+        subscriber.restartTimer();
+      }
+    }
+  }
+
   // As XdsClient APIs becomes resource agnostic, subscribed resource types are dynamic.
   // ResourceTypes that do not have subscribers does not show up in the snapshot keys.
   @Override
@@ -252,7 +266,6 @@ public final class XdsClientImpl extends XdsClient implements XdsClient.Resource
           if (subscriber.errorDescription == null) {
             CpcWithFallbackState cpcToUse = manageControlPlaneClient(subscriber);
             if (cpcToUse.cpc != null) {
-              subscriber.restartTimer();
               cpcToUse.cpc.adjustResourceSubscription(type);
             }
           }
@@ -354,10 +367,15 @@ public final class XdsClientImpl extends XdsClient implements XdsClient.Resource
         if (!subscriber.isWatched()) {
           subscriber.cancelResourceWatch();
           resourceSubscribers.get(type).remove(resourceName);
-          ControlPlaneClient controlPlaneClient = getActiveCpc(subscriber.authority);
-          if (controlPlaneClient != null) {
-            controlPlaneClient.adjustResourceSubscription(type);
+
+          List<ControlPlaneClient> controlPlaneClients =
+              activatedCpClients.get(subscriber.authority);
+          if (controlPlaneClients != null) {
+            controlPlaneClients.forEach((cpc) -> {
+              cpc.adjustResourceSubscription(type);
+            });
           }
+
           if (resourceSubscribers.get(type).isEmpty()) {
             resourceSubscribers.remove(type);
             subscribedResourceTypeUrls.remove(type.typeUrl());
@@ -526,8 +544,12 @@ public final class XdsClientImpl extends XdsClient implements XdsClient.Resource
   @SuppressWarnings("unchecked")
   private <T extends ResourceUpdate> void handleResourceUpdate(
       XdsResourceType.Args args, List<Any> resources, XdsResourceType<T> xdsResourceType,
-      ProcessingTracker processingTracker) {
+      boolean isFirstResponse, ProcessingTracker processingTracker) {
     ControlPlaneClient controlPlaneClient = serverCpClientMap.get(args.serverInfo);
+
+    if (isFirstResponse) {
+      shutdownLowerPriorityCpcs(controlPlaneClient);
+    }
 
     ValidatedResourceUpdate<T> result = xdsResourceType.parse(args, resources);
     logger.log(XdsLogger.XdsLogLevel.INFO,
@@ -548,7 +570,6 @@ public final class XdsClientImpl extends XdsClient implements XdsClient.Resource
           xdsResourceType.typeName(), args.versionInfo, args.nonce, errorDetail);
       controlPlaneClient.nackResponse(xdsResourceType, args.nonce, errorDetail);
     }
-    shutdownLowerPriorityCpcs(controlPlaneClient);
 
     long updateTime = timeProvider.currentTimeNanos();
     Map<String, ResourceSubscriber<? extends ResourceUpdate>> subscribedResources =
@@ -888,7 +909,8 @@ public final class XdsClientImpl extends XdsClient implements XdsClient.Resource
     @Override
     public void handleResourceResponse(
         XdsResourceType<?> xdsResourceType, ServerInfo serverInfo, String versionInfo,
-        List<Any> resources, String nonce, ProcessingTracker processingTracker) {
+        List<Any> resources, String nonce, boolean isFirstResponse,
+        ProcessingTracker processingTracker) {
       checkNotNull(xdsResourceType, "xdsResourceType");
       syncContext.throwIfNotInThisSynchronizationContext();
       Set<String> toParseResourceNames =
@@ -897,7 +919,7 @@ public final class XdsClientImpl extends XdsClient implements XdsClient.Resource
           : null;
       XdsResourceType.Args args = new XdsResourceType.Args(serverInfo, versionInfo, nonce,
           bootstrapInfo, securityConfig, toParseResourceNames);
-      handleResourceUpdate(args, resources, xdsResourceType, processingTracker);
+      handleResourceUpdate(args, resources, xdsResourceType, isFirstResponse, processingTracker);
     }
 
     @Override
@@ -937,32 +959,6 @@ public final class XdsClientImpl extends XdsClient implements XdsClient.Resource
       }
     }
 
-    @Override
-    public void handleStreamRestarted(ServerInfo serverInfo) {
-      syncContext.throwIfNotInThisSynchronizationContext();
-
-      ControlPlaneClient controlPlaneClient = serverCpClientMap.get(serverInfo);
-      if (controlPlaneClient == null) {
-        return;
-      }
-
-      for (String authority : activatedCpClients.keySet()) {
-        if (getActiveCpc(authority) == controlPlaneClient) {
-          startSubscriberTimersIfNeeded(authority);
-        }
-      }
-    }
-
-  }
-
-  private void startSubscriberTimersIfNeeded(String authority) {
-    for (Map<String, ResourceSubscriber<?>> subscriberMap : resourceSubscribers.values()) {
-      for (ResourceSubscriber<?> subscriber : subscriberMap.values()) {
-        if (Objects.equals(subscriber.authority, authority) && subscriber.respTimer == null) {
-          subscriber.restartTimer();
-        }
-      }
-    }
   }
 
   private static class CpcWithFallbackState {
